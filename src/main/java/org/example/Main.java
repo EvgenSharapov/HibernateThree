@@ -1,66 +1,45 @@
 package org.example;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.javarush.dao.CityDAO;
-import com.javarush.dao.CountryDAO;
 import com.javarush.domain.City;
+import com.javarush.redis.CityCountry;
 import com.javarush.repository.RepositoryConnections;
-import com.mysql.cj.xdevapi.SessionFactory;
-import io.lettuce.core.RedisClient;
-import org.hibernate.Session;
-import java.util.ArrayList;
+import com.javarush.service.DataService;
 import java.util.List;
 
 
-import static java.util.Objects.nonNull;
 
 public class Main {
 
-    private final RedisClient redisClient;
-
-    private final ObjectMapper mapper;
-
-    public Main() {
-        redisClient = prepareRedisClient();
-        mapper = new ObjectMapper();
-    }
 
     public static void main(String[] args) {
+        DataService dataService = new DataService();
+        List<City> allCities = dataService.fetchData();
+        List<CityCountry> preparedData = dataService.transformData(allCities);
+        dataService.pushToRedis(preparedData);
+        RepositoryConnections.getInstance().getSessionFactory().getCurrentSession().close();
+        List<Integer> ids = List.of(3, 2545, 123, 4, 189, 89, 3458, 1189, 10, 102);
 
-        Main main = new Main();
-        List<City> allCities = main.fetchData();
-        main.shutdown();;
+        long startRedis = System.currentTimeMillis();
+        dataService.testRedisData(ids);
+        long stopRedis = System.currentTimeMillis();
+
+        long startMysql = System.currentTimeMillis();
+        dataService.testMysqlData(ids);
+        long stopMysql = System.currentTimeMillis();
+
+        System.out.printf("%s:\t%d ms\n", "Redis", (stopRedis - startRedis));
+        System.out.printf("%s:\t%d ms\n", "MySQL", (stopMysql - startMysql));
+
+        dataService.shutdown();
+
+
     }
 
 
-    private List<City> fetchData() {
-        try (Session session = RepositoryConnections.getInstance().getSessionFactory().getCurrentSession()) {
-            List<City> allCities = new ArrayList<>();
-            session.beginTransaction();
-            CityDAO cityDAO = RepositoryConnections.getInstance().getCityDAO();
 
-            int totalCount = cityDAO.getTotalCount();
-            int step = 500;
-            for (int i = 0; i < totalCount; i += step) {
-                allCities.addAll(cityDAO.getItems(i, step));
-            }
-            session.getTransaction().commit();
-            return allCities;
-        }
-    }
 
-    private void shutdown() {
-        if (nonNull(RepositoryConnections.getInstance().getSessionFactory())) {
-            RepositoryConnections.getInstance().getSessionFactory().close();
-        }
-        if (nonNull(redisClient)) {
-            redisClient.shutdown();
-        }
-    }
 
-    private RedisClient prepareRedisClient(){
-        return null;
-    }
+
 
 
 
